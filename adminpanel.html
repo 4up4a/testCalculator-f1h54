@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Админ-панель</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        button {
+            padding: 5px 10px;
+            margin: 2px;
+            cursor: pointer;
+        }
+        .form-group {
+            margin: 10px 0;
+        }
+        input {
+            padding: 8px;
+            width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Админ-панель пользователей</h1>
+    
+    <div>
+        <h2>Добавить пользователя</h2>
+        <div class="form-group">
+            <input id="newLogin" placeholder="Логин">
+        </div>
+        <div class="form-group">
+            <input id="newPassword" placeholder="Пароль">
+        </div>
+        <button onclick="addUser()">Добавить</button>
+    </div>
+    
+    <h2>Список пользователей</h2>
+    <table id="usersTable">
+        <thead>
+            <tr>
+                <th>Логин</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <script>
+        let db;
+
+        // Инициализация базы данных
+        async function initDB() {
+            const SQL = await initSqlJs({
+                locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+            });
+
+            // Загрузка из localStorage или создание новой
+            const savedDb = localStorage.getItem('sqlite_db');
+            if (savedDb) {
+                const data = new Uint8Array(JSON.parse(savedDb));
+                db = new SQL.Database(data);
+            } else {
+                db = new SQL.Database();
+                db.run("CREATE TABLE Users (login TEXT PRIMARY KEY, password TEXT)");
+                // Добавляем админа по умолчанию
+                db.run("INSERT INTO Users VALUES ('admin', 'admin')");
+                saveDB();
+            }
+            
+            updateUsersTable();
+        }
+
+        // Сохранение БД
+        function saveDB() {
+            const dbData = db.export();
+            localStorage.setItem('sqlite_db', JSON.stringify(Array.from(dbData)));
+        }
+
+        // Добавление пользователя
+        function addUser() {
+            const login = document.getElementById("newLogin").value.trim();
+            const password = document.getElementById("newPassword").value.trim();
+            
+            if (!login || !password) {
+                alert("Введите логин и пароль!");
+                return;
+            }
+            
+            try {
+                db.run("INSERT INTO Users VALUES (?, ?)", [login, password]);
+                saveDB();
+                updateUsersTable();
+                document.getElementById("newLogin").value = "";
+                document.getElementById("newPassword").value = "";
+            } catch (e) {
+                alert("Ошибка: " + (e.message.includes("UNIQUE") ? "Пользователь уже существует" : e.message));
+            }
+        }
+
+        // Удаление пользователя
+        function deleteUser(login) {
+            if (confirm(`Удалить пользователя ${login}?`)) {
+                db.run("DELETE FROM Users WHERE login = ?", [login]);
+                saveDB();
+                updateUsersTable();
+            }
+        }
+
+        // Обновление таблицы пользователей
+        function updateUsersTable() {
+            const result = db.exec("SELECT login FROM Users ORDER BY login");
+            const tbody = document.querySelector("#usersTable tbody");
+            tbody.innerHTML = "";
+            
+            if (result.length > 0) {
+                result[0].values.forEach(row => {
+                    const tr = document.createElement("tr");
+                    const login = row[0];
+                    
+                    tr.innerHTML = `
+                        <td>${login}</td>
+                        <td>
+                            <button onclick="deleteUser('${login}')">Удалить</button>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        // Инициализация при загрузке
+        initDB();
+    </script>
+</body>
+</html>
